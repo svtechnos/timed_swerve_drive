@@ -15,23 +15,21 @@ import com.revrobotics.CANSparkMax.IdleMode;
 import com.revrobotics.CANSparkMaxLowLevel.MotorType;
 
 import com.ctre.phoenix.motorcontrol.can.*;
-import com.ctre.phoenix.sensors.*;
-import com.ctre.phoenix.motorcontrol.ControlMode;
 import com.ctre.phoenix.motorcontrol.FeedbackDevice;
-import com.ctre.phoenix.motorcontrol.StatusFrameEnhanced;
-import com.ctre.phoenix.motorcontrol.can.*;
 
 public class Robot extends TimedRobot {
   private static final String kDefaultAuto = "Default";
   private static final String kCustomAuto = "My Auto";
   private String m_autoSelected;
   private final SendableChooser<String> m_chooser = new SendableChooser<>();
-  private static final double sped=0.3; 
-  private static final double remp=0.04;
+  private static final double sped=0.1; 
+  private static final double tremp=0.04;
+  private static final double dremp=0.1;
   private static final double fremp=0.2;
-  //even motors are turn
-  private static final int MotorDeviceID[] = {1,2,3,4,5,6,7,8};
-  private static final int talDeviceID[] = {21,23,24,22};
+  //even motors(ID) are turn
+  private static final int mDeviceID[] = {1,2,3,4,5,6,7,8};
+  private static final int tDeviceID[] = {21,23,24,22};
+  private static final double tOffset[] = {93.78, 174.1,307.89,299.8};
   private Joystick joystick;
   private int i;
   private double dPower;
@@ -41,6 +39,8 @@ public class Robot extends TimedRobot {
   private double dF = 0.5;
   private double jXt = 0.006;
   private double mT = 0.4;
+  private double mtPower;
+  private double turn_in_progress = 5;
   private int counter;
   private Timer clock;
   private WPI_TalonSRX t[] = new WPI_TalonSRX[4];
@@ -56,13 +56,14 @@ public class Robot extends TimedRobot {
     clock = new Timer();
     joystick=new Joystick(0);
     for(int j=0;j<4;j++){
-      t[j]=new WPI_TalonSRX(talDeviceID[j]);
+      t[j]=new WPI_TalonSRX(tDeviceID[j]);
       t[j].configSelectedFeedbackSensor(FeedbackDevice.PulseWidthEncodedPosition);
     }
     for(i=0;i<8;i++){
-      m[i] = new CANSparkMax(MotorDeviceID[i], MotorType.kBrushless);
+      m[i] = new CANSparkMax(mDeviceID[i], MotorType.kBrushless);
       m[i].restoreFactoryDefaults();
-      m[i].setOpenLoopRampRate(remp);
+      if(i%2==0){m[i].setOpenLoopRampRate(dremp);}
+      else{m[i].setOpenLoopRampRate(tremp);}
       m[i].setIdleMode(IdleMode.kBrake);
       e[i] = m[i].getEncoder();
     }
@@ -76,7 +77,6 @@ public class Robot extends TimedRobot {
    */
   @Override
   public void robotPeriodic() {}
-
   /**
    * This autonomous (along with the chooser code above) shows how to select between different
    * autonomous modes using the dashboard. The sendable chooser code works with the Java
@@ -110,7 +110,18 @@ public class Robot extends TimedRobot {
     for(i=0;i<8;i++){
       m[i].setOpenLoopRampRate(fremp);
       m[i].stopMotor();
-      m[i].setOpenLoopRampRate(remp);
+      m[i].setOpenLoopRampRate(dremp);
+    }
+  }
+  public void test_forward(){
+    for(i=0;i<8;i+=2){
+      m[i].set(sped);
+    }
+  }
+  public void test_encoder(){
+    for(i=0;i<4;i++){
+      System.out.println("Encoder "+(i+1)+":"+(((t[i].getSelectedSensorPosition()*360/4096)+tOffset[i])%360));
+      
     }
   }
   public void test_Motors(){
@@ -133,8 +144,8 @@ public class Robot extends TimedRobot {
     if(d<4){
       return 0;
     }
-    if(d>180){
-      d=360-d;
+    if(d>90){
+      d=180-d;
       if(t>c){return 1*d;}
       else{return -1*d;}
     }else{
@@ -143,15 +154,13 @@ public class Robot extends TimedRobot {
     }
   }
   public void test_joystick(){
-    
     double jX;
     double jY;
     double cAngle;
     jX = joystick.getX();
     jY = joystick.getY()*-1;
-    for(int i=1;i<8;i+=2){
-      //cAngle = e[i].getPosition()*360; //MIGHT(WILL) NEEED TO FIX: THIS ENCODER CRAP MIGHT(WILL) BE BROKEN!
-      cAngle=(t[(i-1)/2].getSelectedSensorPosition())*360/4096;
+    for(i=1;i<8;i+=2){
+      cAngle=(((t[(i-1)/2].getSelectedSensorPosition())*360/4096)+(tOffset[(i-1)/2]))%360;
       dPower = Math.sqrt(((jX*jX)+(jY*jY))/2);
       if(dPower<dPowerMin){
         dAngle = cAngle;
@@ -170,39 +179,21 @@ public class Robot extends TimedRobot {
           else if(jX>0 &&jY<0){dAngle=360-dAngle;}
         }
       }
-      double dir ;
+      if(dAngle>180){
+        dAngle-=180;
+        dPower*=-1;
+      }
+      double dir;
       dir= deltaMod(dAngle, cAngle);
-      //if(Math.abs(dAngle-cAngle)>180){
-        //dAngle=360-dAngle;
-      //}
-      //if(dAngle>0){
-      //  m[i].set(0.25*dir);
-      //  m[i-1].set(0.5*dPower);
-      //  //move(dir,dPower);
-      //}else{
-      //  m[i].set(0);
-      //  m[i-1].set(0);
-     // }
-    //if(i==7){
       int cc,dd;
       cc=(int)cAngle;
       dd=(int)dAngle;
-    System.out.print("cAngle is: "+cc);
-    System.out.println(" dAngle is: "+dd);
-    double mpower_temp=tF*dir/180;
-    if(Math.abs(mpower_temp)>mT) mpower_temp=mT*mpower_temp/Math.abs(mpower_temp);
-    m[i].set(mpower_temp);
-    //}
-    m[i-1].set(dF*dPower);
-  }
-}
-
-  public void move(int dir,double dPower,int id){
-    for(int i=1;i<8;i+=2){
-      m[i].set(0.25*dir);
-    }
-    for(int i=0;i<8;i+=2){
-      m[i].set(0.5*dPower);
+      System.out.print("cAngle is: "+cc);
+      System.out.println(" dAngle is: "+dd);
+      mtPower=tF*dir/180;
+      if(Math.abs(mtPower)>mT) mtPower=mT*mtPower/Math.abs(mtPower);
+      m[i].set(mtPower);
+      if(Math.abs(dir)<turn_in_progress){m[i-1].set(dF*dPower);}
     }
   }
 
