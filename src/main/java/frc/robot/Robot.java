@@ -144,8 +144,8 @@ public class Robot extends TimedRobot {
     if(d<4){
       return 0;
     }
-    if(d>90){
-      d=180-d;
+    if(d>180){
+      d=360-d;
       if(t>c){return 1*d;}
       else{return -1*d;}
     }else{
@@ -179,10 +179,10 @@ public class Robot extends TimedRobot {
           else if(jX>0 &&jY<0){dAngle=360-dAngle;}
         }
       }
-      if(dAngle>180){
-        dAngle-=180;
-        dPower*=-1;
-      }
+      //if(dAngle>180){
+      //  dAngle-=180;
+      //  dPower*=-1;
+      //}
       double dir;
       dir= deltaMod(dAngle, cAngle);
       int cc,dd;
