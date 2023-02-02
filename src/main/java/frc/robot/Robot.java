@@ -22,31 +22,30 @@ public class Robot extends TimedRobot {
   private static final String kCustomAuto = "My Auto";
   private String m_autoSelected;
   private final SendableChooser<String> m_chooser = new SendableChooser<>();
-  private static final double sped=0.1; 
-  private static final double tremp=0.04;
-  private static final double dremp=0.1;
-  private static final double fremp=0.2;
-  //even motors(ID) are turn
-  private static final int mDeviceID[] = {1,2,3,4,5,6,7,8};
-  private static final int tDeviceID[] = {21,23,24,22};
-  private static final double tOffset[] = {93.78, 174.1,307.89,299.8};
-  private Joystick joystick;
-  private int i;
-  private double dPower;
-  private double dAngle;
-  private double dPowerMin = 0.06;
-  private double tF = 1;
-  private double dF = 0.5;
+  private static final double sped=0.1;//a speed for testing functions
+  private static final double tremp=0.04;//turn ramp
+  private static final double dremp=0.5;//drive ramp
+  private static final double fremp=0.2;//falling ramp
+  private static final int mDeviceID[] = {1,2,3,4,5,6,7,8};//even motors(ID) are turn
+  private static final int tDeviceID[] = {21,23,24,22};//encoder device ids
+  private static final double tOffset[] = {93.78, 174.1,307.89,299.8};//turn motor offsets
+  private Joystick joystick;//joystick thing
+  private int i;//global eye ;-;
+  private double dPower;//the magnitude of joystick(polar)
+  private double dAngle;//angle of joystick(polar)
+  private double dPowerMin = 0.06;//before this number the motor wont drive forward
+  private double tF = 1;//turn factor
+  private double dF = 0.5;//drive factor
   private double jXt = 0.006;
-  private double mT = 0.4;
+  private double mT = 0.4;//max turn speed
   private double mtPower;
   private double turn_in_progress = 5;
-  private int counter;
-  private Timer clock;
-  private WPI_TalonSRX t[] = new WPI_TalonSRX[4];
-  private CANSparkMax m[] = new CANSparkMax[8];
-  private RelativeEncoder e[] = new RelativeEncoder[8];
-
+  private double rT = 0.1;//rotate threshhold
+  private int counter;//a counter
+  private Timer clock;//a clock
+  private WPI_TalonSRX t[] = new WPI_TalonSRX[4];//encoders
+  private CANSparkMax m[] = new CANSparkMax[8];//motors
+  private RelativeEncoder e[] = new RelativeEncoder[8];//trash encoders
 
   @Override
   public void robotInit() {
@@ -55,15 +54,15 @@ public class Robot extends TimedRobot {
     SmartDashboard.putData("Auto choices", m_chooser);
     clock = new Timer();
     joystick=new Joystick(0);
-    for(int j=0;j<4;j++){
+    for(int j=0;j<4;j++){//encoder init
       t[j]=new WPI_TalonSRX(tDeviceID[j]);
       t[j].configSelectedFeedbackSensor(FeedbackDevice.PulseWidthEncodedPosition);
     }
-    for(i=0;i<8;i++){
+    for(i=0;i<8;i++){//motor and trash encoder init
       m[i] = new CANSparkMax(mDeviceID[i], MotorType.kBrushless);
       m[i].restoreFactoryDefaults();
-      if(i%2==0){m[i].setOpenLoopRampRate(dremp);}
-      else{m[i].setOpenLoopRampRate(tremp);}
+      if(i%2==0){m[i].setOpenLoopRampRate(tremp);}
+      else{m[i].setOpenLoopRampRate(dremp);}
       m[i].setIdleMode(IdleMode.kBrake);
       e[i] = m[i].getEncoder();
     }
@@ -105,26 +104,32 @@ public class Robot extends TimedRobot {
         break;
     }
   }
-
   public void clear_Motors(){
-    for(i=0;i<8;i++){
+    for(i=0;i<8;i++){//breaking func
       m[i].setOpenLoopRampRate(fremp);
       m[i].stopMotor();
       m[i].setOpenLoopRampRate(dremp);
     }
   }
-  public void test_forward(){
-    for(i=0;i<8;i+=2){
-      m[i].set(sped);
+  public boolean dir_drive(double aangle, double ddistance, double sspeed){
+    double cAngle;
+    boolean c=true;
+    for(i=1;i<8;i+=2){
+      cAngle=(((t[(i-1)/2].getSelectedSensorPosition())*360/4096)+(tOffset[(i-1)/2]))%360;
+      if(aangle-cAngle>90){aangle=Math.abs(aangle-180);sspeed*=-1;}
+      double dir;
+      dir = deltaMod(sspeed, cAngle);
+      mtPower=tF*dir/180;
+      if(Math.abs(mtPower)>mT){mtPower=mT*mtPower/Math.abs(mtPower);m[i].set(mtPower);}
+      if(Math.abs(dir)>turn_in_progress){c= true;continue;}
+      if(e[i-1].getPosition()<ddistance){m[i-1].set(dF*sspeed); c=true;}
+      else{c=false;}
     }
+    return c;
   }
-  public void test_encoder(){
-    for(i=0;i<4;i++){
-      System.out.println("Encoder "+(i+1)+":"+(((t[i].getSelectedSensorPosition()*360/4096)+tOffset[i])%360));
-      
-    }
-  }
-  public void test_Motors(){
+  public void test_forward(){for(i=0;i<8;i+=2){m[i].set(sped);}}//moves drive motors forward
+  public void test_encoder(){for(i=0;i<4;i++){System.out.println("Encoder "+(i+1)+":"+(((t[i].getSelectedSensorPosition()*360/4096)+tOffset[i])%360));}}//prints encdoers
+  public void test_Motors(){//tests each motor one by one
     if(counter < 16){
       if(counter%2!=0){
         m[counter/2].set(sped);
@@ -138,7 +143,7 @@ public class Robot extends TimedRobot {
       }
     }
   }
-  public double deltaMod(double t, double c){
+  public double deltaMod(double t, double c){//calculates direction and angle
     double d;
     d = Math.abs(t-c);
     if(d<4){
@@ -153,7 +158,7 @@ public class Robot extends TimedRobot {
       else{return 1*d;}
     }
   }
-  public void test_joystick(){
+  public void test_joystick(){//joystick drive for teleop
     double jX;
     double jY;
     double cAngle;
@@ -162,16 +167,11 @@ public class Robot extends TimedRobot {
     for(i=1;i<8;i+=2){
       cAngle=(((t[(i-1)/2].getSelectedSensorPosition())*360/4096)+(tOffset[(i-1)/2]))%360;
       dPower = Math.sqrt(((jX*jX)+(jY*jY))/2);
-      if(dPower<dPowerMin){
-        dAngle = cAngle;
-        dPower = 0;
-      }else{
+      if(dPower<dPowerMin){dAngle = cAngle;dPower = 0;}
+      else{
         if(Math.abs(jX)<jXt){
-          if(jY>0){
-            dAngle=90;
-          }else{
-            dAngle=270;
-          }
+          if(jY>0){dAngle=90;}
+          else{dAngle=270;}
         }else{
           dAngle=(Math.atan(Math.abs(jY)/Math.abs(jX)))*360/(2*3.1415);
           if(jX<=0 &&jY>=0){dAngle=180-dAngle;}
@@ -179,20 +179,12 @@ public class Robot extends TimedRobot {
           else if(jX>0 &&jY<0){dAngle=360-dAngle;}
         }
       }
-      if(dAngle>180){
-        dAngle-=180;
-        dPower*=-1;
-      }
+      if(Math.abs(joystick.getZ())>rT){if(i==1){dAngle=45;}if(i==3){dAngle=315;}if(i==5){dAngle=45;}if(i==7){dAngle=315;}}
+      if(dAngle-cAngle>90){dAngle=Math.abs(dAngle-180);dPower*=-1;}
       double dir;
-      dir= deltaMod(dAngle, cAngle);
-      int cc,dd;
-      cc=(int)cAngle;
-      dd=(int)dAngle;
-      System.out.print("cAngle is: "+cc);
-      System.out.println(" dAngle is: "+dd);
+      dir = deltaMod(dAngle, cAngle);
       mtPower=tF*dir/180;
-      if(Math.abs(mtPower)>mT) mtPower=mT*mtPower/Math.abs(mtPower);
-      m[i].set(mtPower);
+      if(Math.abs(mtPower)>mT){mtPower=mT*mtPower/Math.abs(mtPower);m[i].set(mtPower);}
       if(Math.abs(dir)<turn_in_progress){m[i-1].set(dF*dPower);}
     }
   }
@@ -203,6 +195,7 @@ public class Robot extends TimedRobot {
     clock.reset();
     clock.start();
     clear_Motors();
+    for(i=0;i<8;i+=2){e[i].setPosition(0);}
   }
   @Override
   public void teleopPeriodic() {test_joystick();}
